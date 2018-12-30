@@ -1,0 +1,1 @@
+{"nodes":[{"id":"TYPO3","properties":{"version":"test2"}},{"id":"PHP","properties":{"version":"test","legacy":"to-be-removed"}}],"links":[{"source":"PHP","target":"TYPO3","weight":1}]}
