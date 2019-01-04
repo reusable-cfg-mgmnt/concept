@@ -114,6 +114,21 @@ export class Processor {
         });
     }
 
+    public run_routines() {
+        this.mergedGraph.properties.map.forEach((value, key) => {
+            const node_marker = this.mergedGraph.get_node_marker(key);
+            console.log('[' + this.marker_to_string(node_marker) + '] Node ' + key + ':');
+            const changed = this.mergedGraph.properties.get_changed_properties(key);
+            if (!changed.length) {
+                console.log('- No changes');
+                return;
+            }
+            changed.forEach((property) => {
+                console.log('- [' + this.marker_to_string(property.marker) + '] ' + property.name + ': \'' + property.value[0] + '\' => \'' + property.value[1] + '\'');
+            });
+        });
+    }
+
     /**
      * Verifies that both model graphs are topologically identical
      */
