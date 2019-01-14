@@ -1,0 +1,24 @@
+---
+PHP:
+  properties:
+    - version: some-reference
+    - newProperty: some-reference
+  #dependencies:
+  #  - Ubuntu
+TYPO3:
+  properties:
+    - version: some-reference
+  dependencies:
+    - PHP
+    #- MySQL
+Solr:
+  properties:
+    - version: some-reference
+Ubuntu:
+  properties:
+    - version: some-reference
+MySQL:
+  properties:
+    - version: some-reference
+  dependencies:
+    - Ubuntu

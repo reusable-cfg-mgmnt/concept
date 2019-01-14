@@ -1,8 +1,10 @@
 import * as GraphDS from "graph-data-structure";
 import {Property} from "./Property";
 import {PropertyMap} from "./PropertyMap";
-import {ModelComponent} from "./ModelComponent";
 import {Marker} from "./Marker";
+import * as fs from "fs";
+import {ModelComponent} from "./ModelComponent";
+import YAML from 'yaml';
 
 /**
  * This class combines the given functionalities of the graph-data-structure with custom requirements (node properties).
@@ -16,6 +18,30 @@ export class ComposedModels {
     protected _nodeProperties = new PropertyMap(new Map<string, Property[]>()); // Maps a nodeName to its properties
 
     protected _nodeMarkers = new Map<string, Marker>();
+
+    protected static allComponents: ModelComponent[] = [];
+    public static init() {
+        const file = fs.readFileSync('./all_components.yaml', 'utf8');
+        const components = YAML.parse(file);
+        for (const component_key in components) {
+            if (!components.hasOwnProperty(component_key)) {
+                continue;
+            }
+
+            // Transform array of properties into object of properties
+            const properties = {};
+            for (const property of components[component_key].properties) {
+                Object.assign(properties, ...property);
+            }
+
+            // Pass dependencies if set
+            let dependencies = [];
+            if (components[component_key].hasOwnProperty('dependencies')) {
+                dependencies = components[component_key].dependencies;
+            }
+            this.allComponents.push(new ModelComponent(component_key, properties, dependencies));
+        }
+    }
 
     public get_node_marker(nodeName: string): Marker {
         return this._nodeMarkers.get(nodeName);
@@ -89,10 +115,11 @@ export class ComposedModels {
         }
     }
 
-    protected static create_from_array(array: ModelComponent[]) {
+    protected static create_from_array(array: string[]) {
+        const componentObjs = this.allComponents.filter((component => array.indexOf(component.name) !== -1)); // array
         const model = new ComposedModels();
         let name;
-        for (let listElement of array) {
+        for (let listElement of componentObjs) {
             name = listElement.name;
             // Set node
             model._graph.addNode(name);
@@ -109,6 +136,10 @@ export class ComposedModels {
 
             // Set edges
             for (let dependency of listElement.dependencies) {
+                if (array.indexOf(dependency) === -1) {
+                    // Dependency not found in input array which is mandatory!
+                    throw new Error('The component ' + name + ' depends on ' + dependency + ' which is missing in the list.');
+                }
                 console.debug('Setting edge from ' + dependency + ' to ' + name);
                 model._graph.addEdge(dependency, name);
             }
@@ -123,12 +154,12 @@ export class ComposedModels {
         return graph;
     }
 
-    public static factory(data: string|ModelComponent[]|ComposedModels): ComposedModels {
-        if (typeof data === "string") {
+    public static factory(data: string|string[]|ComposedModels): ComposedModels {
+        if (typeof data === "string") { // create from save file (predecessor graph G)
             return ComposedModels.deserialize( data );
-        } else if (data instanceof ComposedModels) {
+        } else if (data instanceof ComposedModels) { // create as copy (constructing graph H)
             return this.create_from_copy(data);
-        } else if (data instanceof Array) {
+        } else if (data instanceof Array) { // successor graph G'
             return this.create_from_array(data);
         }
     }

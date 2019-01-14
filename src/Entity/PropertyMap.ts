@@ -28,7 +28,7 @@ export class PropertyMap {
         return this._map.get(nodeName).map((property) => property.name);
     }
 
-    public get_changed_properties(nodeName: string) {
+    public get_changed_properties(nodeName: string): Property[] {
         return this._map.get(nodeName).filter((property) => property.marker !== Marker.NOOP);
     }
 }

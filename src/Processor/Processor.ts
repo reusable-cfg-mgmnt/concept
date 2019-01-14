@@ -2,10 +2,19 @@ import * as fs from "fs";
 import {ComposedModels} from "../Entity/ComposedModels";
 import {Marker} from "../Entity/Marker";
 import {Property} from "../Entity/Property";
+import * as path from "path";
+import {CUDOperation, Routine} from "../Entity/Routine";
+import {ModelComponent} from "../Entity/ModelComponent";
 
 export class Processor {
     protected saveDataFile = './data.txt';
     protected mergedGraph: ComposedModels;
+
+    /**
+     * Location where the routine executables are stored. [nodename] is replaced by the name of a node in lowercase.
+     * @type {string}
+     */
+    protected classes_dir = path.join(__dirname, '..', '..', 'test', 'classes', '[nodename]', 'routines');
 
     constructor(model: ComposedModels) {
         const composedModel = model;
@@ -96,6 +105,93 @@ export class Processor {
         return null;
     }
 
+    protected node_dfs(nodeName, path = []) {
+        const stack = this.mergedGraph.adjacent(nodeName); // expand node, i.e. return all children
+        while (stack.length) {
+            const currentNode = stack.pop();
+            path.push(currentNode);
+            this.node_dfs(currentNode, path);
+        }
+        return path;
+    }
+
+    protected get_routines(nodeName: string) {
+        const directory = this.classes_dir.replace('[nodename]', nodeName.toLowerCase());
+        const routines: Routine[] = [];
+        fs.readdirSync(directory).forEach((file) => {
+            if (file.endsWith('.js')) {
+                const routine = require(path.join(directory, file)).default;
+                routines.push( routine );
+            }
+        });
+        return routines;
+    }
+
+    protected marker_to_operation(marker: Marker) {
+        switch (marker) {
+            case Marker.CREATE:
+                return CUDOperation.CREATE;
+            case Marker.UPDATE:
+                return CUDOperation.UPDATE;
+            case Marker.DELETE:
+                return CUDOperation.DELETE;
+            default:
+                throw new Error('Unable to transform marker ' + marker + ' into a routine operation.');
+        }
+    }
+
+    /**
+     *
+     * @param {string} nodeName
+     * @param {Property[]} changes
+     * @param {string} context
+     * @param {boolean} fetch_all - fetches all routines if set to true. if set to false only fetches one routine
+     * @returns {Routine[]}
+     */
+    protected get_routines_for_change(nodeName: string, changes: Property[], context: string = null, fetch_all = true) {
+       const routines: Routine[] = [];
+        for (const routine of this.get_routines(nodeName)) {
+            for (const change of changes) {
+                const operation = this.marker_to_operation(change.marker) as CUDOperation;
+                if (
+                    routine.getOperation() === operation && // same operation
+                    routine.getProperties().indexOf(change.name) !== -1 && // same property name
+                    routine.getContext() === context // correct context
+                ) {
+                    routines.push(routine);
+                    if (!fetch_all) {
+                        break;
+                    }
+                }
+            }
+            if (!fetch_all && routines.length) {
+                break; // skip checking remaining changes as we only care if any property has been changed
+            }
+        }
+        return routines;
+    }
+
+    /**
+     * This method finds all nodes that are affected by property changes on a given node
+     * @param {string} nodeName name of the node where the change occurred
+     * @param {Property[]} changes node properties that were changed (with marker set!)
+     * @returns {string[]}
+     */
+    protected get_affected_nodes(nodeName: string, changes: Property[]) {
+        // Get all potentially affected nodes (= all sub nodes)
+        const potentially_affected = this.node_dfs(nodeName);
+
+        // Check for all potentially affected nodes if a routine was defined for any changed property with the same operation
+        const really_affected: string[] = [];
+        for (const node of potentially_affected) {
+            // Fetch a maximum of one routine (fetch_all=false) defined for "node" in context "nodeName"
+            if (this.get_routines_for_change(node, changes, nodeName, false).length) {
+                really_affected.push(node);
+            }
+        }
+        return really_affected;
+    }
+
     /**
      * Prints changes that were made to node properties
      */
@@ -111,21 +207,8 @@ export class Processor {
             changed.forEach((property) => {
                console.log('- [' + this.marker_to_string(property.marker) + '] ' + property.name + ': \'' + property.value[0] + '\' => \'' + property.value[1] + '\'');
             });
-        });
-    }
-
-    public run_routines() {
-        this.mergedGraph.properties.map.forEach((value, key) => {
-            const node_marker = this.mergedGraph.get_node_marker(key);
-            console.log('[' + this.marker_to_string(node_marker) + '] Node ' + key + ':');
-            const changed = this.mergedGraph.properties.get_changed_properties(key);
-            if (!changed.length) {
-                console.log('- No changes');
-                return;
-            }
-            changed.forEach((property) => {
-                console.log('- [' + this.marker_to_string(property.marker) + '] ' + property.name + ': \'' + property.value[0] + '\' => \'' + property.value[1] + '\'');
-            });
+            let affected_nodes = this.get_affected_nodes(key, changed);
+            console.log("\n Also affected: " + affected_nodes);
         });
     }
 
